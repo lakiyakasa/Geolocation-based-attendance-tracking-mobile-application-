@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Geo-Attendance Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
+  <style>
+    #map { height: 250px; border-radius: 12px; }
+    .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: #10b981; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+  <!-- Theme Toggle Button -->
+  <div class="flex justify-end p-4">
+    <button id="themeToggle" class="bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-white">
+      🌙 Dark Mode
+    </button>
+  </div>
+
+  <div class="max-w-3xl mx-auto px-6 py-10">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-3xl font-bold">Geo-Attendance Tracker</h1>
+      <button id="logoutBtn" class="bg-red-600 px-3 py-2 rounded">Logout</button>
+    </div>
+
+    <div id="map" class="mb-4"></div>
+
+    <div class="flex justify-center gap-4 mb-6">
+      <button id="checkInBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-white" disabled>Check In</button>
+      <button id="checkOutBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white" disabled>Check Out</button>
+    </div>
+
+    <p id="locationDisplay" class="text-gray-400 mb-4">Fetching your location...</p>
+    <div id="attendanceList" class="space-y-2"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Firebase config (unchanged)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDMwYiNHPkLo5Ob2lL6qxo1DpGgxPv1t4U",
+      authDomain: "codding-ec386.firebaseapp.com",
+      projectId: "codding-ec386",
+      storageBucket: "codding-ec386.appspot.com",
+      messagingSenderId: "253069095350",
+      appId: "1:253069095350:web:ed4081bdeec0eeb43f9117",
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const checkInBtn = document.getElementById("checkInBtn");
+    const checkOutBtn = document.getElementById("checkOutBtn");
+    const locationDisplay = document.getElementById("locationDisplay");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const attendanceList = document.getElementById("attendanceList");
+
+    let userId = null;
+    let map = null, marker = null;
+    let watchId = null;
+
+    // Initialize map safely
+    function initMap(lat, lng) {
+      if (map) {
+        map.setView([lat, lng], 16);
+        if (marker) marker.setLatLng([lat, lng]);
+        else marker = L.marker([lat, lng]).addTo(map);
+      } else {
+        map = L.map("map").setView([lat, lng], 16);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(map);
+        marker = L.marker([lat, lng]).addTo(map);
+      }
+    }
+
+    // Continuously update location
+    function trackLocation() {
+      if (!navigator.geolocation) {
+        locationDisplay.textContent = "Geolocation not supported by your browser.";
+        return;
+      }
+
+      // clear existing watch if any
+      try { if (watchId !== null) navigator.geolocation.clearWatch(watchId); } catch(e){}
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          locationDisplay.textContent = `📍 Latitude: ${lat.toFixed(5)}, Longitude: ${lng.toFixed(5)}`;
+          initMap(lat, lng);
+        },
+        (err) => {
+          let msg = "Error fetching location.";
+          if (err.code === 1) msg = "Permission denied. Please allow location access.";
+          else if (err.code === 2) msg = "Position unavailable.";
+          else if (err.code === 3) msg = "Request timed out.";
+          locationDisplay.textContent = msg;
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      );
+    }
+
+    // record attendance (fast)
+    async function recordAttendance(type) {
+      try {
+        // Disable buttons while getting position/write
+        checkInBtn.disabled = true;
+        checkOutBtn.disabled = true;
+
+        // Use getCurrentPosition (fast), wrapped in Promise
+        const pos = await new Promise((res, rej) => {
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, maximumAge: 3000, timeout: 7000 });
+        });
+
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // add to Firestore
+        await db.collection("users").doc(userId).collection("attendance").add({
+          type,
+          latitude: lat,
+          longitude: lng,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        alert(`${type.toUpperCase()} recorded successfully!`);
+      } catch (err) {
+        console.error('recordAttendance error:', err);
+        alert("Could not record attendance. Please enable GPS and try again.");
+      } finally {
+        // re-enable buttons
+        checkInBtn.disabled = false;
+        checkOutBtn.disabled = false;
+      }
+    }
+
+    checkInBtn.onclick = () => recordAttendance("check-in");
+    checkOutBtn.onclick = () => recordAttendance("check-out");
+    logoutBtn.onclick = () => { auth.signOut().then(() => window.location.href = "index.html"); };
+
+    // Helper: render attendance item safely
+    function renderAttendanceItem(data) {
+      const t = data.timestamp && data.timestamp.toDate ? data.timestamp.toDate().toLocaleString() : "No time";
+      const latText = (typeof data.latitude === 'number') ? data.latitude.toFixed(3) : data.latitude;
+      const lngText = (typeof data.longitude === 'number') ? data.longitude.toFixed(3) : data.longitude;
+      const div = document.createElement('div');
+      div.className = 'bg-gray-700 p-3 rounded';
+      div.innerHTML = `<b>${(data.type||'').toUpperCase()}</b> - ${t}<br> Lat: ${latText}, Lng: ${lngText}`;
+      attendanceList.appendChild(div);
+    }
+
+    // Auth state
+    auth.onAuthStateChanged(user => {
+      if (!user) {
+        window.location.href = "index.html";
+      } else {
+        userId = user.uid;
+        checkInBtn.disabled = false;
+        checkOutBtn.disabled = false;
+        trackLocation(); // start tracking
+
+        // Listen attendance collection
+        db.collection("users").doc(userId).collection("attendance")
+          .orderBy("timestamp", "desc")
+          .onSnapshot(snapshot => {
+            attendanceList.innerHTML = "";
+            snapshot.forEach(doc => {
+              const data = doc.data();
+              renderAttendanceItem(data);
+            });
+          }, err => {
+            console.error('attendance snapshot error', err);
+          });
+      }
+    });
+
+    // Clean up watch on page unload
+    window.addEventListener('beforeunload', () => {
+      try { if (watchId !== null) navigator.geolocation.clearWatch(watchId); } catch(e){}
+    });
+  </script>
+
+  <!-- 🌙 Theme Toggle -->
+  <script>
+    const themeToggle = document.getElementById('themeToggle');
+    const html = document.documentElement;
+
+    if (localStorage.getItem('theme') === 'light') {
+      html.classList.remove('dark');
+      themeToggle.textContent = '🌙 Dark Mode';
+    } else {
+      html.classList.add('dark');
+      themeToggle.textContent = '☀️ Light Mode';
+    }
+
+    themeToggle.addEventListener('click', () => {
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        themeToggle.textContent = '🌙 Dark Mode';
+      } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        themeToggle.textContent = '☀️ Light Mode';
+      }
+    });
+  </script>
+</body>
+</html>

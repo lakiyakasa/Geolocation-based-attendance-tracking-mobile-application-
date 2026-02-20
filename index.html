@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login | Geo Attendance</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
+  <style>
+    body {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* Floating Animation */
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+      100% { transform: translateY(0px); }
+    }
+
+    /* Fade In */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .glow-box {
+      animation: fadeIn 0.8s ease-out, float 3s ease-in-out infinite;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.4);
+    }
+
+    .input-glow:focus {
+      outline: none;
+      box-shadow: 0 0 10px #22c55e;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Theme Toggle -->
+  <button id="themeToggle" class="absolute top-4 right-4 bg-gray-800 text-white px-3 py-2 rounded-lg shadow hover:bg-gray-700 transition">
+    🌙 Dark Mode
+  </button>
+
+  <div class="glow-box bg-gray-800 bg-opacity-90 p-8 rounded-2xl shadow-2xl w-96 text-center transform transition">
+    <h2 class="text-3xl font-extrabold mb-6 text-green-400">Geo Attendance</h2>
+    <p class="text-gray-400 mb-8">Sign in to continue</p>
+
+    <input id="email" type="email" placeholder="Email Address"
+      class="input-glow w-full mb-4 px-4 py-3 rounded-lg bg-gray-900 text-gray-100 placeholder-gray-500 focus:ring-2 focus:ring-green-500 transition" />
+
+    <input id="password" type="password" placeholder="Password"
+      class="input-glow w-full mb-6 px-4 py-3 rounded-lg bg-gray-900 text-gray-100 placeholder-gray-500 focus:ring-2 focus:ring-green-500 transition" />
+    
+    <button id="loginBtn"
+      class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold tracking-wide transition transform hover:scale-105 active:scale-95">
+      Login
+    </button>
+
+    <p id="msg" class="mt-4 text-center text-sm text-red-400"></p>
+
+    <div class="mt-6 text-sm text-gray-400">
+      Don’t have an account? <a href="#" class="text-green-400 hover:underline">Contact Admin</a>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyDMwYiNHPkLo5Ob2lL6qxo1DpGgxPv1t4U",
+      authDomain: "codding-ec386.firebaseapp.com",
+      projectId: "codding-ec386",
+      storageBucket: "codding-ec386.appspot.com",
+      messagingSenderId: "253069095350",
+      appId: "1:253069095350:web:ed4081bdeec0eeb43f9117",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    // Login Logic
+    const loginBtn = document.getElementById("loginBtn");
+    const msg = document.getElementById("msg");
+
+    loginBtn.addEventListener("click", () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      msg.textContent = "Logging in...";
+
+      auth.signInWithEmailAndPassword(email, password)
+        .then(() => {
+          msg.textContent = "✅ Login successful!";
+          setTimeout(() => (window.location.href = "dashboard.html"), 1000);
+        })
+        .catch(err => {
+          msg.textContent = "❌ " + err.message;
+        });
+    });
+
+    // Redirect if already logged in
+    auth.onAuthStateChanged(user => {
+      if (user) window.location.href = "dashboard.html";
+    });
+
+    // Theme Toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const html = document.documentElement;
+
+    if (localStorage.getItem('theme') === 'light') {
+      html.classList.remove('dark');
+      themeToggle.textContent = '🌙 Dark Mode';
+    } else {
+      html.classList.add('dark');
+      themeToggle.textContent = '☀️ Light Mode';
+    }
+
+    themeToggle.addEventListener('click', () => {
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('theme', 'light');
+        themeToggle.textContent = '🌙 Dark Mode';
+      } else {
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        themeToggle.textContent = '☀️ Light Mode';
+      }
+    });
+  </script>
+</body>
+</html>
